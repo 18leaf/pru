@@ -1,0 +1,81 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://example.com/service.schema.json",
+  "type": "object",
+  "required": ["service", "version", "runtime"],
+  "additionalProperties": false,
+
+  "properties": {
+    "service": {
+      "type": "string",
+      "minLength": 1
+    },
+
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+
+    "runtime": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["docker", "native"]
+        },
+
+        "docker": {
+          "type": "object",
+          "required": ["image"],
+          "additionalProperties": false,
+          "properties": {
+            "image": { "type": "string" },
+            "tag": { "type": "string", "default": "latest" }
+          }
+        }
+      },
+
+      "allOf": [
+        {
+          "if": {
+            "properties": { "type": { "const": "docker" } }
+          },
+          "then": {
+            "required": ["docker"]
+          }
+        }
+      ]
+    },
+
+    "ports": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["containerPort"],
+        "properties": {
+          "containerPort": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          },
+          "protocol": {
+            "type": "string",
+            "enum": ["tcp", "udp"]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+
+    "env": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  }
+}
+

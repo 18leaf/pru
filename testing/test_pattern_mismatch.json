@@ -1,0 +1,8 @@
+{
+  "service": "api",
+  "version": "v1",
+  "runtime": {
+    "type": "native"
+  }
+}
+

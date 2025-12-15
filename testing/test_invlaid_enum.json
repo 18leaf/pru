@@ -1,0 +1,8 @@
+{
+  "service": "api",
+  "version": "1.2.3",
+  "runtime": {
+    "type": "container"
+  }
+}
+
