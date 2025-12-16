@@ -15,8 +15,10 @@ pub fn schema_validated_filecontents<'filetext>(
     let file_as_json: serde_json::Value = serde_json::from_str(file_contents)?;
 
     // init validator to parse errors
-    // if the below fails.. invalid schema is present (for now assume not possible)
-    let validator = jsonschema::validator_for(json_schema)?;
+    // if the below fails.. invalid schema is present (this should not really be something that can
+    // happen. the schemas NEED to be correct for any of this to matter)
+    let validator = jsonschema::validator_for(json_schema)
+        .expect("The schema should adhere to JSON formatting, ");
 
     // iterator for each error present
     for error in validator.iter_errors(&file_as_json) {
@@ -27,7 +29,7 @@ pub fn schema_validated_filecontents<'filetext>(
     Ok(())
 }
 
-fn example() -> Result<(), Box<dyn std::error::Error>> {
+fn _example() -> Result<(), Box<dyn std::error::Error>> {
     let schema = json!({"maxLength": 5});
     let instance = json!("foo");
 
@@ -101,6 +103,6 @@ pub mod tests {
 
     #[test]
     fn example_works() -> Result<(), Box<dyn std::error::Error>> {
-        example()
+        _example()
     }
 }

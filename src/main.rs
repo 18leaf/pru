@@ -1,13 +1,13 @@
+use pru::validator::schema_validated_filecontents;
 use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
 /// LSP Server for Json based LSP config validation
-/// Validation Pipeline -> attempt to parse json with serde_json -> can omit an error here .. STOP
-/// and share error (add line/col if available)
-///
-/// next, validate against the schema -> errors give {instance_path, schema_path, to_string}
+/// validate against the schema -> errors give {instance_path, schema_path, to_string}
 ///
 /// Point Json Error Pointer to an LSP Range struct (at first highlight high level path), expand to
 /// ranges/attempt to find explicit range where error occurs (wait until other functionalities
@@ -19,11 +19,16 @@ use tower_lsp::{Client, LanguageServer, LspService, Server};
 /// - hard-code the schema path in test cases/have a json field at the top calld $"schema" with
 /// accurate schema
 
+// Json Schema Type
+type Schema = Arc<serde_json::Value>;
+type JsonSchemas = Arc<RwLock<HashMap<String, Schema>>>;
+
 #[derive(Debug)]
 struct Backend {
     client: Client,
-    // can use hashmap here instead
-    json_schema: HashMap<String, serde_json::Value>,
+    // rust analyzer uses this pattern with Arc RwLock -- Frequestn Read, Infrequesnt writes
+    // wrapped json value in Arc for shared ownership in the heap.. value should not change
+    json_schemas: JsonSchemas,
 }
 
 #[tower_lsp::async_trait]
@@ -36,6 +41,9 @@ impl LanguageServer for Backend {
             capabilities: ServerCapabilities {
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 completion_provider: Some(CompletionOptions::default()),
+                text_document_sync: Some(TextDocumentSyncCapability::Kind(
+                    TextDocumentSyncKind::FULL,
+                )),
                 ..Default::default()
             },
             ..Default::default()
@@ -50,9 +58,23 @@ impl LanguageServer for Backend {
 
     // handle did_open, did_change the same way (send whole document at once)
     // later improve this... sync state
-    async fn did_open(&self, params: DidOpenTextDocumentParams) {}
+    async fn did_open(&self, params: DidOpenTextDocumentParams) {
+        self.on_change(OnChangeTextDocumentParams {
+            uri: params.text_document.uri,
+            text: &params.text_document.text,
+            version: Some(params.text_document.version),
+        })
+        .await
+    }
 
-    async fn did_change(&self, params: DidChangeTextDocumentParams) {}
+    async fn did_change(&self, params: DidChangeTextDocumentParams) {
+        self.on_change(OnChangeTextDocumentParams {
+            uri: params.text_document.uri,
+            text: &params.content_changes[0].text,
+            version: Some(params.text_document.version),
+        })
+        .await
+    }
 
     async fn shutdown(&self) -> Result<()> {
         Ok(())
@@ -80,25 +102,46 @@ struct OnChangeTextDocumentParams<'document_text> {
 }
 
 impl Backend {
-    async fn on_change<'document_text>(&self, params: OnChangeTextDocumentParams<'document_text>) {}
+    /// this is the entry point for validating content
+    /// on change is called on document text change... as well as
+    async fn on_change<'document_text>(&self, params: OnChangeTextDocumentParams<'document_text>) {
+        let schema = self.get_or_load_schema("service.schema").await;
+        // todo improve schema_validated_filecontents later
+        let _res = match schema {
+            Ok(schema) => schema_validated_filecontents(&schema, params.text),
+            Err(e) => {
+                eprintln!("Error @ {} Version:{:?}: {}", params.uri, params.version, e);
+                return;
+            }
+        };
+    }
 
     // for now only load schema hard coded
-    async fn load_schema(&mut self) -> tokio::io::Result<()> {
-        // first check if schema is already loaded (schema will be static)
-        if self.json_schema.contains_key("service.schema") {
-            // exit early instead of loading file
-            return Ok(());
+    // TODO discover schema from text, then search hashmap, then try to load from source somewhere
+    async fn get_or_load_schema(&self, key: &str) -> tokio::io::Result<Schema> {
+        // search for existing.. if not found add
+        {
+            let schemas = self.json_schemas.read().await;
+            if let Some(schema) = schemas.get(key) {
+                // cheap clone only reference
+                return Ok(schema.clone());
+            }
         }
 
-        let file = std::fs::File::open("service.schema.json")?;
+        // COME BACK HERE LATER FOR EMBEDDING JSON SCHEMAS
+        const SERVICE_SCHEMA: &str = include_str!("../schemas/service.schema.json");
 
-        let reader = std::io::BufReader::new(file);
-        let json_schema: serde_json::Value = serde_json::from_reader(reader)?;
+        // search file obtain schema
+        // TODO unhardcode schema this
+        let schema: serde_json::Value = serde_json::from_str(SERVICE_SCHEMA)?;
 
-        // insert service schema..
-        self.json_schema
-            .insert("service.schema".to_owned(), json_schema);
-        Ok(())
+        // write with lock + clone schema so it can be returned
+        let mut schemas = self.json_schemas.write().await;
+        schemas
+            .entry(key.to_owned())
+            .or_insert(Arc::new(schema.clone()));
+
+        Ok(Arc::new(schema))
     }
 }
 
@@ -111,7 +154,7 @@ async fn main() {
 
     let (service, socket) = LspService::new(|client| Backend {
         client: client,
-        json_schema: HashMap::new(),
+        json_schemas: JsonSchemas::default(),
     });
 
     Server::new(stdin, stdout, socket).serve(service).await;
