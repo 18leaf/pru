@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
@@ -21,7 +22,8 @@ use tower_lsp::{Client, LanguageServer, LspService, Server};
 #[derive(Debug)]
 struct Backend {
     client: Client,
-    // add json schemas here as hashmap.
+    // can use hashmap here instead
+    json_schema: HashMap<String, serde_json::Value>,
 }
 
 #[tower_lsp::async_trait]
@@ -30,7 +32,6 @@ impl LanguageServer for Backend {
     // FOR now only implement intitialize, textDocument{didOpen, didChange, }, and
     // publishDiagnostics
     async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
-        // add supported capabilities here
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
@@ -46,6 +47,12 @@ impl LanguageServer for Backend {
             .log_message(MessageType::INFO, "server initialized!")
             .await;
     }
+
+    // handle did_open, did_change the same way (send whole document at once)
+    // later improve this... sync state
+    async fn did_open(&self, params: DidOpenTextDocumentParams) {}
+
+    async fn did_change(&self, params: DidChangeTextDocumentParams) {}
 
     async fn shutdown(&self) -> Result<()> {
         Ok(())
@@ -66,11 +73,46 @@ impl LanguageServer for Backend {
     }
 }
 
+struct OnChangeTextDocumentParams<'document_text> {
+    uri: Url,
+    text: &'document_text str,
+    version: Option<i32>,
+}
+
+impl Backend {
+    async fn on_change<'document_text>(&self, params: OnChangeTextDocumentParams<'document_text>) {}
+
+    // for now only load schema hard coded
+    async fn load_schema(&mut self) -> tokio::io::Result<()> {
+        // first check if schema is already loaded (schema will be static)
+        if self.json_schema.contains_key("service.schema") {
+            // exit early instead of loading file
+            return Ok(());
+        }
+
+        let file = std::fs::File::open("service.schema.json")?;
+
+        let reader = std::io::BufReader::new(file);
+        let json_schema: serde_json::Value = serde_json::from_reader(reader)?;
+
+        // insert service schema..
+        self.json_schema
+            .insert("service.schema".to_owned(), json_schema);
+        Ok(())
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
 
-    let (service, socket) = LspService::new(|client| Backend { client });
+    // load json_schema here for testing TODO make function for this + load to HashMap
+
+    let (service, socket) = LspService::new(|client| Backend {
+        client: client,
+        json_schema: HashMap::new(),
+    });
+
     Server::new(stdin, stdout, socket).serve(service).await;
 }

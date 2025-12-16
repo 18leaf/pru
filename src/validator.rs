@@ -7,7 +7,7 @@ use serde_json::json;
 /// takes a Json_schema Object, and text of file contents
 ///
 /// lifetime of jsonValue fro json schema might need to persist.. double check this later
-fn schema_validated_filecontents<'filetext>(
+pub fn schema_validated_filecontents<'filetext>(
     json_schema: &serde_json::Value,
     file_contents: &'filetext str,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -80,22 +80,22 @@ pub mod tests {
 
         // hardocded -- should pass
         let test_control_json = r#"{
-          "service": "api",
-          "version": "1.2.3",
-          "runtime": {
-            "type": "docker",
-            "docker": {
-              "image": "nginx",
-              "tag": "1.25"
-            }
-          },
-          "ports": [
-            { "containerPort": 8080, "protocol": "tcp" }
-          ],
-          "env": {
-            "MODE": "production"
-          }
-        }"#;
+  "service": "api",
+  "version": "1.2.3",
+  "runtime": {
+    "type": "docker",
+    "docker": {
+      "image": "nginx",
+      "tag": "1.25"
+    }
+  },
+  "ports": [
+    { "containerPort": 8080, "protocol": "tcp" }
+  ],
+  "env": {
+    "MODE": "production"
+  }
+}"#;
         schema_validated_filecontents(&json_schema, &test_control_json)
     }
 
