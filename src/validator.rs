@@ -1,68 +1,58 @@
 use serde_json::json;
 
-// TODO! -> maybe read file contents as string instead.... as this will be reading from an LSP on text
-// document opened. lifetime param for file in.. not suer about json schema path.. this can be
-// loaded and kept in memory for the server, as it will need be validated throughout changes.
+use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, Position, Range};
 
-/// takes a Json_schema Object, and text of file contents
+/// Takes Json Schema (From HAshmap on BAckend Struct)
+/// Returns All Errors from schema validation as Lsp Daignostics with Error Severity
 ///
-/// lifetime of jsonValue fro json schema might need to persist.. double check this later
-pub fn schema_validated_filecontents<'filetext>(
+/// Improvements TODO
+/// - Retrieve Actual Range for Diagnostic (Maps to File_contents) from JsonPointer
+/// - Use above function with SchemaPath to get hint from SchemaPath
+pub fn schema_validated_filecontents(
     json_schema: &serde_json::Value,
-    file_contents: &'filetext str,
-) -> Result<(), Box<dyn std::error::Error>> {
+    file_contents: &str,
+) -> Result<Vec<Diagnostic>, Box<dyn std::error::Error>> {
+    let diagnostics: Vec<Diagnostic> = vec![];
+
     // Step 1.. Corece filetext as string into JSON content
+    // Errors Here are significiant
     let file_as_json: serde_json::Value = serde_json::from_str(file_contents)?;
+
+    // Ok => continue with validation on schema
+    // Err -> invalid Json (maybe listen to serde_json and try to insert stuff to fix it here to
+    // attempt to look at future fixes... ie insert colon at line x, char y  then try again.. so
+    // forth)
+    //
+    // TODO here match serde_json::from_str for errors + generate diagnostics from them
 
     // init validator to parse errors
     // if the below fails.. invalid schema is present (this should not really be something that can
     // happen. the schemas NEED to be correct for any of this to matter)
     let validator = jsonschema::validator_for(json_schema)
-        .expect("The schema should adhere to JSON formatting, ");
+        .expect("Internal schema violated: Schema needs to be valid"); // expect since LSP
+    // diagnostics are based on correctness of schema
 
-    // iterator for each error present
-    for error in validator.iter_errors(&file_as_json) {
-        eprintln!("Error: {error}");
-        eprintln!("Location: {}", error.instance_path());
-    }
+    // map errors to diagnostics
+    // see here for more info on ValidationError + uses
+    // Additionally -> Here is where we can use SchemaPath -> JsonPointer as str to find correct
+    // usage according to schema doc for hints/autocomplete
+    // https://docs.rs/jsonschema/latest/jsonschema/error/struct.ValidationError.html
+    let diagnostics: Vec<Diagnostic> = validator
+        .iter_errors(&file_as_json)
+        .map(move |e| Diagnostic {
+            // TODO FOR RANGE -> take Json pointer from
+            // TODO create function to return File Position from JsonPointer/find crate
+            // e.instance_path() -> And map to a Range on the original file contents
+            range: Range {
+                ..Default::default()
+            },
+            severity: Some(DiagnosticSeverity::ERROR),
+            message: e.to_string(),
+            ..Default::default()
+        })
+        .collect();
 
-    Ok(())
-}
-
-fn _example() -> Result<(), Box<dyn std::error::Error>> {
-    let schema = json!({"maxLength": 5});
-    let instance = json!("foo");
-
-    // One-off validation
-    assert!(jsonschema::is_valid(&schema, &instance));
-    assert!(jsonschema::validate(&schema, &instance).is_ok());
-
-    // Build & reuse (faster)
-    let validator = jsonschema::validator_for(&schema)?;
-
-    // Fail on first error
-    assert!(validator.validate(&instance).is_ok());
-
-    // Iterate over errors
-    for error in validator.iter_errors(&instance) {
-        eprintln!("Error: {error}");
-        eprintln!("Location: {}", error.instance_path());
-    }
-
-    // Boolean result
-    assert!(validator.is_valid(&instance));
-
-    // Structured output (JSON Schema Output v1)
-    let evaluation = validator.evaluate(&instance);
-    for annotation in evaluation.iter_annotations() {
-        eprintln!(
-            "Annotation at {}: {:?}",
-            annotation.schema_location,
-            annotation.annotations.value()
-        );
-    }
-
-    Ok(())
+    Ok(diagnostics)
 }
 
 #[cfg(test)]
@@ -71,17 +61,7 @@ pub mod tests {
     use std::fs::File;
     use std::io::BufReader;
 
-    #[test]
-    fn validate_schema_works() -> Result<(), Box<dyn std::error::Error>> {
-        // for testing we are using service.schema.json file in testing/ dir for now
-        // attempt to load from file.
-        // For now use hardcoded json below
-        let file = File::open("service.schema.json")?;
-        let reader = BufReader::new(file);
-        let json_schema: serde_json::Value = serde_json::from_reader(reader)?;
-
-        // hardocded -- should pass
-        let test_control_json = r#"{
+    const TEST_CONTROL_JSON: &str = r#"{
   "service": "api",
   "version": "1.2.3",
   "runtime": {
@@ -98,11 +78,50 @@ pub mod tests {
     "MODE": "production"
   }
 }"#;
-        schema_validated_filecontents(&json_schema, &test_control_json)
+
+    struct TestSchema {
+        json_schema: serde_json::Value,
+    }
+
+    impl TestSchema {
+        fn new() -> Result<TestSchema, Box<dyn std::error::Error>> {
+            let file = File::open("schemas/service.schema.json")?;
+            let reader = BufReader::new(file);
+            let json_schema: serde_json::Value = serde_json::from_reader(reader)?;
+
+            Ok(TestSchema {
+                json_schema: json_schema,
+            })
+        }
     }
 
     #[test]
-    fn example_works() -> Result<(), Box<dyn std::error::Error>> {
-        _example()
+    fn validate_schema_works() -> Result<(), Box<dyn std::error::Error>> {
+        // hardocded -- should pass
+        let test_control_json = TEST_CONTROL_JSON;
+        let test = TestSchema::new()?;
+
+        let diagnostics = schema_validated_filecontents(&test.json_schema, &test_control_json)?;
+        let expected_diagnostics: Vec<Diagnostic> = Vec::default();
+
+        assert_eq!(diagnostics, expected_diagnostics);
+        Ok(())
+    }
+
+    #[test]
+    fn first_diagnostic_found() -> Result<(), Box<dyn std::error::Error>> {
+        // hardocded -- should pass
+        let mut test_control_json = TEST_CONTROL_JSON.to_owned();
+        // fopefully remove semi colon
+        test_control_json.remove(13);
+
+        let test = TestSchema::new()?;
+        let diagnostics = schema_validated_filecontents(&test.json_schema, &test_control_json);
+
+        match diagnostics {
+            Ok(e) => assert!(e.len() >= 1usize),
+            Err(e) => eprintln!("{}", e),
+        }
+        Ok(())
     }
 }
