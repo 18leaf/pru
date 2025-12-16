@@ -1,7 +1,4 @@
-{
-  "service": "api",
-  "version": "1.2.3",
-  "runtime": {
+{"service": "api","version": "1.2.3","runtime":{  
     "type": "docker",
     "docker": {
       "image": "nginx",

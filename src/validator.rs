@@ -50,16 +50,18 @@ pub fn schema_validated_filecontents(
         // suggested, look at that fix and modify file content buffer and then see if it works,
         // then reparse until either major error without clear solution.
         Err(e) => {
+            let (line, column) = (e.line() as u32 - 1, e.column() as u32);
             let parse_diagnostic = Diagnostic {
                 range: Range {
                     // can fail if usize > size of u32
                     start: Position {
-                        line: e.line() as u32,
-                        character: e.column() as u32,
+                        line: line,
+                        character: 0,
                     },
-                    // default for now.. maybe there is a better way for this
-                    // TODO comeback and doublecheck
-                    end: Default::default(),
+                    end: Position {
+                        line: line,
+                        character: column - 1,
+                    },
                 },
                 // Note could use a DiagnosticRelatedInformation struct here instead.. as it
                 // points to the error in source code where error occurs.. Come back here
