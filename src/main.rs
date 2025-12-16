@@ -107,8 +107,24 @@ impl Backend {
     async fn on_change<'document_text>(&self, params: OnChangeTextDocumentParams<'document_text>) {
         let schema = self.get_or_load_schema("service.schema").await;
         // todo improve schema_validated_filecontents later
-        let _res = match schema {
-            Ok(schema) => schema_validated_filecontents(&schema, params.text),
+
+        // match loading schema..
+        // if loads, try get diagnostics, if error -> program really just panics on json_schema not
+        // being a valid type
+        match schema {
+            Ok(schema) => {
+                let diagnostics = match schema_validated_filecontents(&schema, params.text) {
+                    Ok(d) => d,
+                    Err(e) => {
+                        eprintln!("Error Schema Validation: {}", e);
+                        return;
+                    }
+                };
+                // publish diagnostics to client
+                self.client
+                    .publish_diagnostics(params.uri, diagnostics, params.version)
+                    .await;
+            }
             Err(e) => {
                 eprintln!("Error @ {} Version:{:?}: {}", params.uri, params.version, e);
                 return;

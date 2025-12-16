@@ -1,5 +1,3 @@
-use serde_json::json;
-
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, Position, Range};
 
 /// Takes Json Schema (From HAshmap on BAckend Struct)
@@ -63,6 +61,8 @@ pub fn schema_validated_filecontents(
                     // TODO comeback and doublecheck
                     end: Default::default(),
                 },
+                // Note could use a DiagnosticRelatedInformation struct here instead.. as it
+                // points to the error in source code where error occurs.. Come back here
                 message: e.to_string(),
                 severity: Some(DiagnosticSeverity::ERROR),
                 ..Default::default()
