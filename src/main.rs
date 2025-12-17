@@ -26,7 +26,7 @@ type JsonSchemas = Arc<RwLock<HashMap<String, Schema>>>;
 #[derive(Debug)]
 struct Backend {
     client: Client,
-    // rust analyzer uses this pattern with Arc RwLock -- Frequestn Read, Infrequesnt writes
+    // rust analyzer uses same pattern with Arc RwLock -- Frequestn Read, Infrequesnt writes
     // wrapped json value in Arc for shared ownership in the heap.. value should not change
     json_schemas: JsonSchemas,
 }

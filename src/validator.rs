@@ -30,15 +30,14 @@ pub fn schema_validated_filecontents(
             // https://docs.rs/jsonschema/latest/jsonschema/error/struct.ValidationError.html
             let diagnostics: Vec<Diagnostic> = validator
                 .iter_errors(&file_as_json)
+                // todo.. Add Diagnostic Code for schema validation errors vs json syntax errors.
                 .map(move |e| Diagnostic {
                     // TODO FOR RANGE -> take Json pointer from
                     // TODO create function to return File Position from JsonPointer/find crate
                     // e.instance_path() -> And map to a Range on the original file contents
-                    range: Range {
-                        ..Default::default()
-                    },
                     severity: Some(DiagnosticSeverity::ERROR),
                     message: e.to_string(),
+                    source: Some(e.instance_path().to_string()),
                     ..Default::default()
                 })
                 .collect();
@@ -74,12 +73,56 @@ pub fn schema_validated_filecontents(
             Ok(diagnostics)
         }
     }
-    // Ok => continue with validation on schema
-    // Err -> invalid Json (maybe listen to serde_json and try to insert stuff to fix it here to
-    // attempt to look at future fixes... ie insert colon at line x, char y  then try again.. so
-    // forth)
-    //
-    // TODO here match serde_json::from_str for errors + generate diagnostics from them
+}
+
+/// Converts Json Pointer to start Position, end Position
+/// Takes a &str JsonPointer and the original raw_file_contents,
+/// outputs None on no find, match on something.
+fn _json_pointer_into_range(json_pointer: &str, raw_file_contents: &str) -> Option<Range> {
+    // json pointer looks like it gives the parent object//parent node of the error
+
+    // since json pointer starts with /root/node/node/etc
+    // iterate through / and then search for match
+
+    // within json_pointer
+    // convert to iterator
+    // for each iteration
+    //      find index of first char of matching iteration of json_pointer
+    //      drop all string items before x
+    //      increment summation index by index of that match
+    // once final iteration occurs -> Found match... search for (in order { (then find next closing
+    // symbol = } ), OR NEWLINE ... only NEWLINE for now)
+    // find distance until NEWLINE / end terminator
+    // that == end position of range
+
+    let mut index_summation: usize = 0;
+    for path_item in json_pointer.split("/") {
+        // if not found, continue.. search for next item
+        index_summation += path_item.find(&path_item).unwrap_or(0);
+    }
+
+    let index = raw_file_contents.find(json_pointer);
+
+    // find line number occurence
+    // count how many bytes where a new line exists before given found
+    let line_number = match index {
+        Some(i) => raw_file_contents[..i]
+            .chars()
+            .filter(|x| *x == '\n')
+            .count() as u32,
+        None => return None,
+    };
+
+    Some(Range {
+        start: Position {
+            line: line_number,
+            character: 0,
+        },
+        end: Position {
+            line: line_number,
+            character: 0,
+        },
+    })
 }
 
 #[cfg(test)]
@@ -94,6 +137,24 @@ pub mod tests {
   "runtime": {
     "type": "docker",
     "docker": {
+      "image": "nginx",
+      "tag": "1.25"
+    }
+  },
+  "ports": [
+    { "containerPort": 8080, "protocol": "tcp" }
+  ],
+  "env": {
+    "MODE": "production"
+  }
+}"#;
+
+    const TEST_ERROR_JSON: &str = r#"{
+  "service": "api",
+  "version": "1.2.3",
+  "runtime": {
+    "type": "docker",
+    "ocker": {
       "image": "nginx",
       "tag": "1.25"
     }
@@ -150,5 +211,43 @@ pub mod tests {
             Err(e) => eprintln!("{}", e),
         }
         Ok(())
+    }
+
+    #[test]
+    fn json_pointer_to_range_works() {
+        let test_error = TEST_ERROR_JSON.to_owned();
+
+        let test = TestSchema::new().expect("For testing");
+
+        let diagnostics = schema_validated_filecontents(&test.json_schema, &test_error);
+
+        let expected_range = Range {
+            start: Position {
+                line: 4,
+                character: 0,
+            },
+            end: Position {
+                line: 4,
+                character: 0,
+            },
+        };
+
+        match diagnostics {
+            Ok(ds) => {
+                let d = ds.iter().next().unwrap();
+                dbg!(&d.source);
+                let range = _json_pointer_into_range(&d.source.clone().unwrap(), &test_error);
+                match range {
+                    Some(r) => {
+                        eprintln!("line: {}, char: {}", r.start.line, r.start.character);
+                        assert_eq!(range, Some(expected_range));
+                    }
+                    None => eprintln!("None Found"),
+                }
+            }
+            Err(e) => {
+                eprintln!("Internal Error: {}", e);
+            }
+        }
     }
 }
