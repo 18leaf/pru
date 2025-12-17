@@ -36,7 +36,15 @@ pub fn schema_validated_filecontents(
                     // TODO create function to return File Position from JsonPointer/find crate
                     // e.instance_path() -> And map to a Range on the original file contents
                     severity: Some(DiagnosticSeverity::ERROR),
-                    message: e.to_string(),
+                    message: format!("Path {}, Error: {}", e.instance_path(), e.to_string()),
+                    range: {
+                        match json_pointer_into_range(e.instance_path().as_str(), file_contents) {
+                            Some(r) => r,
+                            None => Range {
+                                ..Default::default()
+                            },
+                        }
+                    },
                     source: Some(e.instance_path().to_string()),
                     ..Default::default()
                 })
@@ -78,7 +86,7 @@ pub fn schema_validated_filecontents(
 /// Converts Json Pointer to start Position, end Position
 /// Takes a &str JsonPointer and the original raw_file_contents,
 /// outputs None on no find, match on something.
-fn _json_pointer_into_range(json_pointer: &str, raw_file_contents: &str) -> Option<Range> {
+fn json_pointer_into_range(json_pointer: &str, raw_file_contents: &str) -> Option<Range> {
     // json pointer looks like it gives the parent object//parent node of the error
 
     // since json pointer starts with /root/node/node/etc
@@ -95,24 +103,24 @@ fn _json_pointer_into_range(json_pointer: &str, raw_file_contents: &str) -> Opti
     // find distance until NEWLINE / end terminator
     // that == end position of range
 
+    // stacked_file_contents -> shrinks at each iteration of found path
+    let mut stacked_file_contents = raw_file_contents.to_owned().clone();
     let mut index_summation: usize = 0;
     for path_item in json_pointer.split("/") {
         // if not found, continue.. search for next item
-        index_summation += path_item.find(&path_item).unwrap_or(0);
+        let temp_index = stacked_file_contents.find(&path_item).unwrap_or(0);
+        index_summation += temp_index;
+        stacked_file_contents = stacked_file_contents.split_off(temp_index);
     }
 
-    let index = raw_file_contents.find(json_pointer);
+    // count byte occurences of newline char for the line position.
+    let line_number = raw_file_contents[..index_summation]
+        .chars()
+        .filter(|x| *x == '\n')
+        .count() as u32;
 
-    // find line number occurence
-    // count how many bytes where a new line exists before given found
-    let line_number = match index {
-        Some(i) => raw_file_contents[..i]
-            .chars()
-            .filter(|x| *x == '\n')
-            .count() as u32,
-        None => return None,
-    };
-
+    // note the + 1
+    // editor start line number @ 1
     Some(Range {
         start: Position {
             line: line_number,
@@ -223,11 +231,11 @@ pub mod tests {
 
         let expected_range = Range {
             start: Position {
-                line: 4,
+                line: 1,
                 character: 0,
             },
             end: Position {
-                line: 4,
+                line: 1,
                 character: 0,
             },
         };
@@ -236,7 +244,7 @@ pub mod tests {
             Ok(ds) => {
                 let d = ds.iter().next().unwrap();
                 dbg!(&d.source);
-                let range = _json_pointer_into_range(&d.source.clone().unwrap(), &test_error);
+                let range = json_pointer_into_range(&d.source.clone().unwrap(), &test_error);
                 match range {
                     Some(r) => {
                         eprintln!("line: {}, char: {}", r.start.line, r.start.character);
