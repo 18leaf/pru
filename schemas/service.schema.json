@@ -2,59 +2,76 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://example.com/service.schema.json",
   "type": "object",
-  "required": ["service", "version", "runtime"],
-  "additionalProperties": false,
-
+  "required": [
+    "service",
+    "version",
+    "runtime"
+  ],
+  "additionalProperties": true,
   "properties": {
     "service": {
       "type": "string",
       "minLength": 1
     },
-
     "version": {
       "type": "string",
       "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
     },
-
     "runtime": {
       "type": "object",
-      "required": ["type"],
+      "required": [
+        "type"
+      ],
       "additionalProperties": false,
-
       "properties": {
         "type": {
           "type": "string",
-          "enum": ["docker", "native"]
+          "enum": [
+            "docker",
+            "native"
+          ]
         },
-
         "docker": {
           "type": "object",
-          "required": ["image"],
+          "required": [
+            "image"
+          ],
           "additionalProperties": false,
           "properties": {
-            "image": { "type": "string" },
-            "tag": { "type": "string", "default": "latest" }
+            "image": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string",
+              "default": "latest"
+            }
           }
         }
       },
-
       "allOf": [
         {
           "if": {
-            "properties": { "type": { "const": "docker" } }
+            "properties": {
+              "type": {
+                "const": "docker"
+              }
+            }
           },
           "then": {
-            "required": ["docker"]
+            "required": [
+              "docker"
+            ]
           }
         }
       ]
     },
-
     "ports": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["containerPort"],
+        "required": [
+          "containerPort"
+        ],
         "properties": {
           "containerPort": {
             "type": "integer",
@@ -63,13 +80,15 @@
           },
           "protocol": {
             "type": "string",
-            "enum": ["tcp", "udp"]
+            "enum": [
+              "tcp",
+              "udp"
+            ]
           }
         },
         "additionalProperties": false
       }
     },
-
     "env": {
       "type": "object",
       "additionalProperties": {
@@ -78,4 +97,3 @@
     }
   }
 }
-
