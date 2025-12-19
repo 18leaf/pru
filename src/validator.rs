@@ -1,5 +1,7 @@
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, Position, Range};
 
+use crate::error::SchemaValidationError;
+
 /// Takes Json Schema (From HAshmap on BAckend Struct)
 /// Returns All Errors from schema validation as Lsp Daignostics with Error Severity
 ///
@@ -9,7 +11,7 @@ use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, Position, Range};
 pub fn schema_validated_filecontents(
     json_schema: &serde_json::Value,
     file_contents: &str,
-) -> Result<Vec<Diagnostic>, Box<dyn std::error::Error>> {
+) -> Result<Vec<Diagnostic>, SchemaValidationError> {
     // Step 1.. Corece filetext as string into JSON content
     // Errors Here are significiant
     let file_as_json = serde_json::from_str(file_contents);
