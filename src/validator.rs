@@ -10,7 +10,7 @@ use crate::{error::SchemaValidationError, validator::validation::SchemaValidator
 /// - Retrieve Actual Range for Diagnostic (Maps to File_contents) from JsonPointer
 /// - Use above function with SchemaPath to get hint from SchemaPath
 #[instrument(skip(json_schema, file_contents), fields(content_len = file_contents.len()))]
-pub fn schema_validated_filecontents(
+pub fn validate_liberally(
     json_schema: &serde_json::Value,
     file_contents: &str,
 ) -> Result<Vec<Diagnostic>, SchemaValidationError> {
@@ -294,7 +294,7 @@ pub mod tests {
         let test_control_json = TEST_CONTROL_JSON;
         let test = TestSchema::new()?;
 
-        let diagnostics = schema_validated_filecontents(&test.json_schema, &test_control_json)?;
+        let diagnostics = validate_liberally(&test.json_schema, &test_control_json)?;
         let expected_diagnostics: Vec<Diagnostic> = Vec::default();
 
         assert_eq!(diagnostics, expected_diagnostics);
@@ -309,7 +309,7 @@ pub mod tests {
         test_control_json.remove(13);
 
         let test = TestSchema::new()?;
-        let diagnostics = schema_validated_filecontents(&test.json_schema, &test_control_json);
+        let diagnostics = validate_liberally(&test.json_schema, &test_control_json);
 
         match diagnostics {
             Ok(e) => assert!(e.len() >= 1usize),
@@ -324,7 +324,7 @@ pub mod tests {
 
         let test = TestSchema::new().expect("For testing");
 
-        let diagnostics = schema_validated_filecontents(&test.json_schema, &test_error);
+        let diagnostics = validate_liberally(&test.json_schema, &test_error);
 
         let expected_range = Range {
             start: Position {

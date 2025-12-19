@@ -1,4 +1,4 @@
-use pru::validator::schema_validated_filecontents;
+use pru::validator::validate_liberally;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -113,7 +113,7 @@ impl Backend {
         // being a valid type
         match schema {
             Ok(schema) => {
-                let diagnostics = match schema_validated_filecontents(&schema, params.text) {
+                let diagnostics = match validate_liberally(&schema, params.text) {
                     Ok(d) => d,
                     Err(e) => {
                         eprintln!("Error Schema Validation: {}", e);
