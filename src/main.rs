@@ -1,4 +1,4 @@
-use pru::validator::validate_liberally;
+use pru::validate_liberally;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
