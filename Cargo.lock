@@ -808,7 +808,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pru"
+name = "pur"
 version = "0.1.0"
 dependencies = [
  "jsonschema",
