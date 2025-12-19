@@ -120,7 +120,7 @@ mod parsing {
 use parsing::ParsedContent;
 
 mod validation {
-    use crate::validator::pointer::DiagnosticRange;
+    use crate::diagnostic_range;
 
     use super::*;
 
@@ -205,7 +205,7 @@ mod validation {
             // TODO create function to return File Position from JsonPointer/find crate
             // e.instance_path() -> And map to a Range on the original file contents
             let range =
-                DiagnosticRange::from_pointer(error.instance_path().as_str(), file_contents);
+                diagnostic_range::from_pointer(error.instance_path().as_str(), file_contents);
 
             Self {
                 instance_path,
@@ -228,160 +228,9 @@ mod validation {
     }
 }
 
-mod pointer {
-    use super::*;
-
-    /// Helper for resolving diagnostic ranges from JSON pointers
-    pub struct DiagnosticRange;
-
-    impl DiagnosticRange {
-        /// Resolves the range for a diagnostic from a JSON pointer
-        #[instrument(skip(file_contents), fields(pointer = json_pointer))]
-        pub fn from_pointer(json_pointer: &str, file_contents: &str) -> Range {
-            match json_pointer_into_range(json_pointer, file_contents) {
-                Some(range) => {
-                    trace!(
-                        line = range.start.line,
-                        character = range.start.character,
-                        "Successfully resolved diagnostic range"
-                    );
-                    range
-                }
-                None => {
-                    debug!(
-                        pointer = json_pointer,
-                        "Failed to resolve range, using default"
-                    );
-                    Range::default()
-                }
-            }
-        }
-    }
-
-    /// Converts Json Pointer to start Position, end Position
-    /// Takes a &str JsonPointer and the original raw_file_contents,
-    /// outputs None on no find, match on something.
-    #[instrument(skip(raw_file_contents), fields(
-    pointer = json_pointer,
-    content_len = raw_file_contents.len()
-))]
-    pub fn json_pointer_into_range(json_pointer: &str, raw_file_contents: &str) -> Option<Range> {
-        trace!("Converting JSON pointer to range");
-
-        // json pointer looks like it gives the parent object//parent node of the error
-
-        // since json pointer starts with /root/node/node/etc
-        // iterate through / and then search for match
-
-        // within json_pointer
-        // convert to iterator
-        // for each iteration
-        //      find index of first char of matching iteration of json_pointer
-        //      drop all string items before x
-        //      increment summation index by index of that match
-        // once final iteration occurs -> Found match... search for (in order { (then find next closing
-        // symbol = } ), OR NEWLINE ... only NEWLINE for now)
-        // find distance until NEWLINE / end terminator
-        // that == end position of range
-
-        let index_summation = PointerIndex::calculate(json_pointer, raw_file_contents);
-
-        debug!(
-            pointer = json_pointer,
-            resolved_index = index_summation,
-            "Calculated index for JSON pointer"
-        );
-
-        // count byte occurences of newline char for the line position.
-        let line_number = LineNumber::from_index(raw_file_contents, index_summation);
-
-        trace!(line = line_number, "Calculated line number from index");
-
-        // note the + 1
-        // editor start line number @ 1
-        Some(Range {
-            start: Position {
-                line: line_number,
-                character: 0,
-            },
-            end: Position {
-                line: line_number,
-                character: 0,
-            },
-        })
-    }
-
-    /// Calculates the byte index in the file for a given JSON pointer
-    struct PointerIndex;
-
-    impl PointerIndex {
-        #[instrument(skip(raw_file_contents), fields(pointer = json_pointer))]
-        fn calculate(json_pointer: &str, raw_file_contents: &str) -> usize {
-            // stacked_file_contents -> shrinks at each iteration of found path
-            let mut stacked_file_contents = raw_file_contents.to_owned();
-            let mut index_summation: usize = 0;
-
-            let path_items: Vec<&str> = json_pointer.split('/').collect();
-            trace!(
-                path_count = path_items.len(),
-                "Splitting JSON pointer into path items"
-            );
-
-            for (idx, path_item) in path_items.iter().enumerate() {
-                // if not found, continue.. search for next item
-                let temp_index = stacked_file_contents.find(path_item).unwrap_or(0);
-
-                if temp_index == 0 && !path_item.is_empty() {
-                    debug!(
-                        path_item = path_item,
-                        iteration = idx,
-                        "Path item not found in remaining content"
-                    );
-                }
-
-                index_summation += temp_index;
-                stacked_file_contents = stacked_file_contents.split_off(temp_index);
-
-                trace!(
-                    iteration = idx,
-                    path_item = path_item,
-                    temp_index = temp_index,
-                    cumulative_index = index_summation,
-                    "Processed path item"
-                );
-            }
-
-            index_summation
-        }
-    }
-
-    /// Calculates the line number from a byte index
-    struct LineNumber;
-
-    impl LineNumber {
-        #[instrument(skip(raw_file_contents))]
-        fn from_index(raw_file_contents: &str, index: usize) -> u32 {
-            let safe_index = index.min(raw_file_contents.len());
-
-            let line_number = raw_file_contents[..safe_index]
-                .chars()
-                .filter(|x| *x == '\n')
-                .count() as u32;
-
-            trace!(
-                index = safe_index,
-                line_number = line_number,
-                "Calculated line number from index"
-            );
-
-            line_number
-        }
-    }
-}
-
 #[cfg(test)]
 pub mod tests {
-    use crate::validator::pointer::json_pointer_into_range;
+    use crate::json_pointer;
 
     use super::*;
     use std::fs::File;
@@ -492,7 +341,7 @@ pub mod tests {
             Ok(ds) => {
                 let d = ds.iter().next().unwrap();
                 dbg!(&d.source);
-                let range = json_pointer_into_range(&d.source.clone().unwrap(), &test_error);
+                let range = json_pointer::into_range(&d.source.clone().unwrap(), &test_error);
                 match range {
                     Some(r) => {
                         eprintln!("line: {}, char: {}", r.start.line, r.start.character);
