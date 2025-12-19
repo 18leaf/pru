@@ -3,6 +3,7 @@ name = "pur"
 version = "0.1.0"
 edition = "2024"
 description = "LSP for configuration validation"
+license = "BlueOak-1.0.0"
 
 [dependencies]
 jsonschema = "0.37.4"
