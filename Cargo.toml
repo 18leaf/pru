@@ -2,6 +2,7 @@
 name = "pur"
 version = "0.1.0"
 edition = "2024"
+description = "LSP for configuration validation"
 
 [dependencies]
 jsonschema = "0.37.4"
