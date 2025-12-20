@@ -4,7 +4,7 @@ Catch-all configuration validation exposed via an LSP, with plans for a CLI and 
 
 > Status: **Working in progress**. Usable for JSON Schema validation today; more formats and schema-discovery features are planned.
 
-![Alt text image demo (shows the Diagnostic warnings at the current stage)](docs/images/diagnostics-demo.png)
+![Alt text image demo (shows the Diagnostic warnings at the current stage)](https://github.com/18leaf/pur/blob/main/docs/NvimInlineDiagnosticsSchemaAdherenceDec1725.png)
 
 ---
 
